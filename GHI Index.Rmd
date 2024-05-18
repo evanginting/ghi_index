@@ -1,0 +1,67 @@
+---
+title: "Global Hunger Index Project Analysis"
+author: "Evan Hadinata Ginting"
+date: "2023-11-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+
+```{r}
+ghi_index <- read_csv("data/global-hunger-index.csv")
+ghi_gdp_index <- read.csv("data/global-hunger-index-vs-gdp-per-capita.csv")
+```
+
+```{r}
+# Rename some variables and remove one variable
+ghi_gdp_index <- ghi_gdp_index %>%
+                  rename(Country = Entity,
+                         ghi = Global.Hunger.Index..2021.,
+                         gdp_per_capita = GDP.per.capita..PPP..constant.2017.international...,
+                         population = Population..historical.estimates.) %>%
+                  select(-X411773.annotations)
+
+# Creating a new table to populate all continents
+Continent <- ghi_gdp_index %>%
+               select(Country, Continent) %>%
+               filter(!Continent == "")
+
+# Left join to main table
+ghi_gdp_index <- ghi_gdp_index %>% 
+                  left_join(Continent, by = "Country") %>%
+                  select(-7) %>%
+                  rename(Continent = Continent.y)
+
+
+# Filter only 2000, 2006, 2012, 2021 & add new variables of GHI levels
+ghi_gdp_index_tidy <- ghi_gdp_index %>% 
+                        filter(Year %in% c("2000", "2006", "2012", "2021"),
+                               !ghi == "") %>%
+                        mutate(ghi_lvl = case_when(ghi < 10 ~ "Low",
+                                                   ghi >= 10 & ghi < 20 ~ "Moderate",
+                                                   ghi >= 20 & ghi < 35 ~ "Serious",
+                                                   ghi >= 35 & ghi < 50 ~ "Alarming",
+                                                   ghi >= 50 ~ "Extremely Alarming",
+                                                   TRUE ~ "Other"))
+
+# Creating a new table to accommodate GDP 2020 to fill GDP 2021
+gdp_2020 <- ghi_gdp_index %>% 
+                filter(Year == 2020) %>%
+                mutate(year_alias = 2021) %>%
+                select(Country, year_alias, gdp_per_capita, population)
+
+# Replace the value of GDP in the main table to create final table for data viz
+library(data.table)
+setDT(ghi_gdp_index_tidy)
+setDT(gdp_2020)
+ghi_gdp_index_tidy[gdp_2020, on = c("Country" = "Country", "Year" = "year_alias"), gdp_per_capita:=i.gdp_per_capita]
+ghi_gdp_index_tidy[gdp_2020, on = c("Country" = "Country", "Year" = "year_alias"), population:=i.population]
+
+# Save the transformed data into local repository
+write.csv2(ghi_gdp_index_tidy, file = "data/ghi_gdp_index_tidy.csv")
+```
+
